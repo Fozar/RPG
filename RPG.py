@@ -1,13 +1,13 @@
-import asyncio
+from asyncio import sleep, TimeoutError
 import inspect
 import random
 import re
-from itertools import cycle
+import itertools as it
 from operator import itemgetter
 from typing import Union
 
 import discord
-from mongoengine import Document, connect
+from mongoengine import connect
 from redbot.core import checks
 from redbot.core.bot import Red
 from redbot.core.commands import commands
@@ -16,7 +16,11 @@ from redbot.core.utils.predicates import MessagePredicate
 
 from .data.character.attributes import Attributes
 from .data.character.character import Character, CharacterNotFound
-from .data.character.equipment import Equipment, ItemIsNotEquippable, ItemNotFoundInEquipment
+from .data.character.equipment import (
+    Equipment,
+    ItemIsNotEquippable,
+    ItemNotFoundInEquipment,
+)
 from .data.character.inventory import Inventory, ItemNotFoundInInventory
 from .data.item.item import Item, ItemNotFound
 from .config import config
@@ -61,7 +65,7 @@ class RPG(Cog):
         _config = config.bot
         status = _config.statuses[:]
         random.shuffle(status)
-        statuses = cycle(status)
+        statuses = it.cycle(status)
 
         while not self.Red.is_closed():
             status = (
@@ -73,7 +77,7 @@ class RPG(Cog):
                 name=next(statuses), type=discord.ActivityType.watching
             )
             await self.Red.change_presence(status=status, activity=activity)
-            await asyncio.sleep(
+            await sleep(
                 random.randint(_config.status_change_min, _config.status_change_max)
             )
 
@@ -106,7 +110,7 @@ class RPG(Cog):
                     / 100,
                 )
                 char.save()
-            await asyncio.sleep(timer)
+            await sleep(timer)
 
     @commands.group(invoke_without_command=True, aliases=["char", "персонаж", "перс"])
     async def character(self, ctx, member: Union[discord.Member, discord.User] = None):
@@ -199,7 +203,7 @@ class RPG(Cog):
             msg = await self.Red.wait_for(
                 "message", timeout=30.0, check=MessagePredicate.same_context(ctx)
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             await ctx.send(f"{author.mention}, удаление персонажа отменено.")
             return
         if msg.content.lower() in ["да", "д", "yes", "y"]:
@@ -516,6 +520,21 @@ class RPG(Cog):
         new_item.save()
         await ctx.send(f"{ctx.author.mention}, предмет создан!")
 
+    @commands.command(aliases=["я"])
+    async def me(self, ctx, *, message):
+        """Сообщение о персонаже от третьего лица"""
+
+        author = ctx.author
+
+        try:
+            char = self.get_char_by_id(str(author.id))
+        except CharacterNotFound:
+            await ctx.send(f"{author.mention}, персонаж не найден.")
+            return
+
+        await ctx.message.delete()
+        await ctx.send(f"***{char.name}*** *{message}*")
+
     @commands.command(aliases=["stats", "статы"])
     async def statistics(self, ctx, member: Union[discord.Member, discord.User] = None):
         """ Характеристики персонажа """
@@ -632,7 +651,7 @@ class RPG(Cog):
             name (str): Item name.
 
         Returns:
-            Document: Item object.
+            Item: Item object.
 
         Raises:
             ItemNotFound: If the item is not found.
@@ -658,7 +677,7 @@ class RPG(Cog):
                     and int(m.content) < i,
                 )
                 item = items[int(answer.content) - 1]
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 raise ItemNotFound
             finally:
                 await msg.delete()
@@ -672,7 +691,7 @@ class RPG(Cog):
             item_id (int): Item ID.
 
         Returns:
-            Document: Item object.
+            Item: Item object.
 
         Raises:
             ItemNotFound: If the item is not found.
@@ -690,7 +709,7 @@ class RPG(Cog):
             member_id: Member ID to get.
 
         Returns:
-            Document: Character object.
+            Character: Character object.
 
         Raises:
             CharacterNotFound: If the member is not registered.
@@ -824,7 +843,7 @@ class RPG(Cog):
                 and int(m.content) < i,
             )
             await answer.delete()
-        except asyncio.TimeoutError:
+        except TimeoutError:
             raise ItemNotFoundInInventory
         finally:
             await msg.delete()
