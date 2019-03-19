@@ -3,7 +3,8 @@ from typing import Union
 import discord
 from discord.ext import commands
 
-from RPG import Character
+from ...config import config
+from ..character.character import Character
 
 
 class FightSession:
@@ -20,6 +21,12 @@ class FightSession:
         self.opponent = opponent
         self.opponent_char = opponent_char
         self._task = None
+        self.embed = discord.Embed(
+            title="Бой", colour=discord.Colour(0xC20000)
+        )
+        self.embed.set_author(name=config.bot.name, icon_url=config.bot.icon_url)
+        self.embed.set_footer(text="Создание персонажа")
+        self.message = None
 
     @classmethod
     def start(
@@ -45,6 +52,4 @@ class FightSession:
 
         """
         fight = cls(ctx, initiator_char, opponent, opponent_char)
-        loop = ctx.bot.loop
-        fight._task = loop.create_task(fight.run())
         return fight

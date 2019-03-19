@@ -506,23 +506,23 @@
     "genders": {
       "male": "мужчина",
       "female": "женщина"
-  },
+    },
     "inventory": {
       "inv_categories": {
-      "Weapon": "оружие",
-      "Armor": "броня",
-      "Item": "другое"
-    },
+        "Weapon": "оружие",
+        "Armor": "броня",
+        "Item": "другое"
+      },
       "inv_stats": {
-      "rarity_text": "редкость",
-      "weapon_type_text": "тип",
-      "slot_text": "слот",
-      "kind_text": "тип",
-      "damage": "урон",
-      "armor": "броня",
-      "price": "цена",
-      "maker": "создатель"
-    },
+        "rarity_text": "редкость",
+        "weapon_type_text": "тип",
+        "slot_text": "слот",
+        "kind_text": "тип",
+        "damage": "урон",
+        "armor": "броня",
+        "price": "цена",
+        "maker": "создатель"
+      },
       "equipment": {
         "right_hand": "правая рука",
         "left_hand": "левая рука",

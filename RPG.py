@@ -16,12 +16,12 @@ from redbot.core.utils.predicates import MessagePredicate
 
 from .data.character.attributes import Attributes
 from .data.character.character import Character, CharacterNotFound
-from .data.character.equipment import (
+from .data.character.inventory.equipment import (
     Equipment,
     ItemIsNotEquippable,
     ItemNotFoundInEquipment,
 )
-from .data.character.inventory import Inventory, ItemNotFoundInInventory
+from .data.character.inventory.inventory import Inventory, ItemNotFoundInInventory
 from .data.item.item import Item, ItemNotFound
 from .config import config
 from .data.session.register_char_session import RegisterSession
@@ -121,7 +121,7 @@ class RPG(Cog):
             member = author
         member_id = str(member.id)
         try:
-            char = self.get_char_by_id(member_id)
+            char = Character.get_char_by_id(member_id)
         except CharacterNotFound:
             await ctx.send(f"{author.mention}, персонаж не найден.")
             await ctx.send_help()
@@ -224,7 +224,7 @@ class RPG(Cog):
             member = author
 
         try:
-            char = self.get_char_by_id(str(member.id))
+            char = self.CharacterClass.get_char_by_id(str(member.id))
         except CharacterNotFound:
             await ctx.send(f"{author.mention}, персонаж не найден.")
             return
@@ -240,20 +240,20 @@ class RPG(Cog):
 
         pages = []
         for category, name in config.humanize.inventory.inv_categories.items():
-            items = char.inventory.items[category]
+            inventory = char.inventory
+            items = list(inventory[category.lower()])
             if not items:
                 continue
             item_stats = []
             for item in items:
-                count = item["count"]
+                count = item.count
                 if item and count > 0:
                     try:
-                        _item = self.get_item_by_id(item["item_id"])
-                        stats = {**{"count": count}, **dict(_item.to_mongo())}
-                        if item["maker"]:
-                            stats["maker"] = item["maker"]
-                        if item["temper"]:
-                            stats["temper"] = item["temper"]
+                        stats = {**{"count": count}, **dict(item.item.to_mongo())}
+                        if item.maker:
+                            stats["maker"] = item.maker
+                        if item.temper:
+                            stats["temper"] = item.temper
                         item_stats.append(stats)
                     except ItemNotFound:
                         print(
@@ -304,7 +304,7 @@ class RPG(Cog):
         member_id = str(member.id)
 
         try:
-            char = self.get_char_by_id(member_id)
+            char = Character.get_char_by_id(member_id)
         except CharacterNotFound:
             await ctx.send(f"{author.mention}, персонаж не найден.")
             return
@@ -331,7 +331,7 @@ class RPG(Cog):
         author = ctx.author
 
         try:
-            char = self.get_char_by_id(str(member.id))
+            char = Character.get_char_by_id(str(member.id))
         except CharacterNotFound:
             await ctx.send(f"{author.mention}, персонаж не найден.")
             return
@@ -345,9 +345,9 @@ class RPG(Cog):
         try:
             items = char.inventory.get_items(_item)
             if len(items) > 1:
-                item = await self.item_select(ctx, _item, items)
+                item = await self.item_select(ctx, _item, list(items))
             elif len(items) == 1:
-                item = items[0]
+                item = items.first()
             else:
                 raise ItemNotFoundInInventory
             char.inventory.remove_item(_item, int(count), item["maker"], item["temper"])
@@ -366,7 +366,7 @@ class RPG(Cog):
         if member is None:
             member = author
         try:
-            char = self.get_char_by_id(str(member.id))
+            char = Character.get_char_by_id(str(member.id))
         except CharacterNotFound:
             await ctx.send(f"{author.mention}, персонаж не найден.")
             return
@@ -377,13 +377,15 @@ class RPG(Cog):
         embed.set_author(name=config.bot.name, icon_url=config.bot.icon_url)
         embed.set_footer(text="Снаряжение персонажа")
 
-        for slot, item in char.equipment.to_mongo().items():
-            if not item:
+        eqpt = char.equipment.to_dict()
+
+        for slot, name in config.humanize.inventory.equipment.items():
+            try:
+                value = eqpt[slot].item.name
+            except KeyError:
                 value = "Пусто"
-            else:
-                value = self.get_item_by_id(item["item_id"]).name
             embed.add_field(
-                name=config.humanize.inventory.equipment[slot].capitalize(),
+                name=name.capitalize(),
                 value=value,
                 inline=True,
             )
@@ -396,7 +398,7 @@ class RPG(Cog):
 
         author = ctx.author
         try:
-            char = self.get_char_by_id(str(author.id))
+            char = Character.get_char_by_id(str(author.id))
         except CharacterNotFound:
             await ctx.send(f"{author.mention}, персонаж не найден.")
             return
@@ -410,12 +412,12 @@ class RPG(Cog):
         try:
             items = char.inventory.get_items(_item)
             if len(items) > 1:
-                item = await self.item_select(ctx, _item, items)
+                item = await self.item_select(ctx, _item, list(items))
             elif len(items) == 1:
-                item = items[0]
+                item = items.first()
             else:
                 raise ItemNotFoundInInventory
-            self.equip_item(char, item)
+            char.equipment.equip_item(item)
             char.save()
             await ctx.send(f"{author.mention}, предмет экипирован.")
         except ItemNotFoundInInventory:
@@ -430,7 +432,7 @@ class RPG(Cog):
         author = ctx.author
 
         try:
-            char = self.get_char_by_id(str(author.id))
+            char = Character.get_char_by_id(str(author.id))
         except CharacterNotFound:
             await ctx.send(f"{author.mention}, персонаж не найден.")
             return
@@ -442,7 +444,7 @@ class RPG(Cog):
             return
 
         try:
-            self.unequip_item(char, _item)
+            char.equipment.unequip_item(_item)
             char.save()
             await ctx.send(f"{author.mention}, предмет снят.")
         except ItemNotFoundInEquipment:
@@ -520,17 +522,32 @@ class RPG(Cog):
         new_item.save()
         await ctx.send(f"{ctx.author.mention}, предмет создан!")
 
+    @staticmethod
+    def convert_mention(member_id: str):
+        print(member_id)
+        try:
+            return Character.get_char_by_id(member_id).name
+        except CharacterNotFound:
+            return "незнакомец(-ка)"
+
     @commands.command(aliases=["я"])
     async def me(self, ctx, *, message):
-        """Сообщение о персонаже от третьего лица"""
+        """Действие персонажа от третьего лица
+
+        Упоминания пользователей заменяются на имена персонажей.
+        """
 
         author = ctx.author
+        print(message)
 
         try:
-            char = self.get_char_by_id(str(author.id))
+            char = Character.get_char_by_id(str(author.id))
         except CharacterNotFound:
             await ctx.send(f"{author.mention}, персонаж не найден.")
             return
+        message = re.sub(
+            r"<@(!)?(\d*)>", lambda m: self.convert_mention(m.group(2)), message
+        )
 
         await ctx.message.delete()
         await ctx.send(f"***{char.name}*** *{message}*")
@@ -544,7 +561,7 @@ class RPG(Cog):
             member = author
 
         try:
-            char = self.get_char_by_id(str(member.id))
+            char = Character.get_char_by_id(str(member.id))
         except CharacterNotFound:
             await ctx.send(f"{author.mention}, персонаж не найден.")
             return
@@ -600,7 +617,7 @@ class RPG(Cog):
         if session in self.register_sessions:
             self.register_sessions.remove(session)
         if session.complete:
-            inventory = self.InventoryClass({"Weapon": [], "Armor": [], "Item": []})
+            inventory = self.InventoryClass()
             race_attrs = config.game.races[session.char["race"]]
             attributes = self.AttributesClass(
                 race_attrs.main,
@@ -657,7 +674,7 @@ class RPG(Cog):
             ItemNotFound: If the item is not found.
 
         """
-        items = self.ItemClass.objects(name=name)
+        items = Item.get_items(name=name)
         if not items:
             raise ItemNotFound
         if len(items) > 1:
@@ -683,132 +700,6 @@ class RPG(Cog):
                 await msg.delete()
             return item
         return items.first()
-
-    def get_item_by_id(self, item_id: int) -> Item:
-        """Returns the item by the given id.
-
-        Args:
-            item_id (int): Item ID.
-
-        Returns:
-            Item: Item object.
-
-        Raises:
-            ItemNotFound: If the item is not found.
-
-        """
-        items = self.ItemClass.objects(item_id=item_id)
-        if not items:
-            raise ItemNotFound
-        return items.first()
-
-    def get_char_by_id(self, member_id: str) -> Character:
-        """Returns character object.
-
-        Args:
-            member_id: Member ID to get.
-
-        Returns:
-            Character: Character object.
-
-        Raises:
-            CharacterNotFound: If the member is not registered.
-
-        """
-        chars = self.CharacterClass.objects(member_id=member_id)
-        if not chars:
-            raise CharacterNotFound
-        return chars.first()
-
-    def unequip_item(self, char: Character, item: Item):
-        """Unequips the item.
-
-        The method finds the item in the equipment and removes it, if it exists.
-
-        Args:
-            char (Character): Character on which the item is unequipped.
-            item (str): Item to be unequipped.
-
-        """
-        items = list(char.equipment.to_mongo().values())
-        slots = list(char.equipment.to_mongo().keys())
-        item = next(
-            (_item for _item in items if int(_item["item_id"]) == (item["item_id"])),
-            False,
-        )
-        if not item:
-            raise ItemNotFoundInEquipment
-        else:
-            index = items.index(item)
-            self.unequip_slot(char, slots[index])
-
-    def unequip_slot(self, char: Character, slot: str):
-        """Unequips the item from slot.
-
-        The method removes the item from the equipment, adds it to the inventory
-        and changes the attributes of the character, if necessary.
-
-        Args:
-            char (Character): Character on which the item is unequipped.
-            slot (str): Item slot from which there is a need to remove the item.
-        """
-        equipment = char.equipment
-        inventory = char.inventory
-        attributes = char.attributes
-        _item = getattr(equipment, slot)
-        if _item:
-            setattr(equipment, slot, None)
-            item = self.get_item_by_id(_item["item_id"])
-            inventory.add_item(item, 1, _item["maker"], _item["temper"])
-            if hasattr(inventory.items, "armor"):
-                attributes.armor_rating -= item["armor"]
-
-    def equip_item(self, char: Character, item: dict):
-        """Equips the item.
-
-        Args:
-            char (Character): Character on which the item is equipped.
-            item (dict): Sample item from inventory.
-
-        Raises:
-            ItemNotFoundInInventory: If the item is not found in the inventory.
-            ItemIsNotEquippable: If the item cannot be equipped.
-
-        """
-        equipment = char.equipment
-        inventory = char.inventory
-        attributes = char.attributes
-        item_instance = item.copy()
-        item_instance.pop("count")
-        _item = self.get_item_by_id(item_instance["item_id"])
-        category = inventory.get_item_category(_item)
-        if item in inventory.items[category]:
-            if category == "Weapon":
-                right_hand = equipment.right_hand
-                if right_hand:
-                    weapon_right = self.get_item_by_id(right_hand["item_id"])
-                    left_hand = equipment.left_hand
-                    if left_hand:
-                        self.unequip_slot(char, "left_hand")
-                    if _item["hands"] == 2:
-                        self.unequip_slot(char, "right_hand")
-                    else:
-                        if weapon_right["hands"] == 1:
-                            equipment.left_hand = right_hand
-                        else:
-                            self.unequip_slot(char, "right_hand")
-                equipment.right_hand = item_instance
-            elif category == "Armor":
-                slot = _item["slot"]
-                if getattr(equipment, slot):
-                    self.unequip_slot(char, slot)
-                setattr(equipment, slot, item_instance)
-                attributes.armor_rating += _item["armor"]
-            else:
-                raise ItemIsNotEquippable
-            inventory.remove_item(_item, 1, item["maker"], item["temper"])
-        else:
-            raise ItemNotFoundInInventory
 
     async def item_select(self, ctx, item, items):
         """

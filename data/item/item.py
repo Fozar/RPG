@@ -1,3 +1,5 @@
+import re
+
 from mongoengine import Document, IntField, StringField
 
 
@@ -9,7 +11,7 @@ class Item(Document):
         name (str): Item name.
         desc (str): Item description.
         price (int): Item price.
-        _rarity (str): Item rarity.
+        rarity (str): Item rarity.
 
     """
 
@@ -55,10 +57,61 @@ class Item(Document):
     def rarity_text(self) -> str:
         """Returns item rarity in human form.
 
-        Returns: Item rarity.
+        Returns:
+            str: Item rarity.
 
         """
         return self.rarity_rates[self.rarity].title()
+
+    @property
+    def category(self) -> str:
+        """Returns the item category.
+
+        Returns:
+            str: Category name.
+
+        """
+        return re.sub(r"Item.", "", self["_cls"])
+
+    @classmethod
+    def get_items(cls, name: str = None, item_id: int = None):
+        """Returns a list of items matching id or name.
+
+        Args:
+            name (:obj:`str`, optional): Item name.
+            item_id (:obj:`int`, optional): Item ID.
+
+        Returns:
+            BaseQuerySet: List of items.
+
+        """
+        if not name and not item_id:
+            raise AttributeError
+        elif item_id:
+            items = cls.objects(item_id=item_id)
+        else:
+            items = cls.objects(name=name)
+
+        return items
+
+    @classmethod
+    def get_item_by_id(cls, item_id: int):
+        """Returns the item by the given id.
+
+        Args:
+            item_id (int): Item ID.
+
+        Returns:
+            Item: Item object.
+
+        Raises:
+            ItemNotFound: If the item is not found.
+
+        """
+        items = cls.get_items(item_id=item_id)
+        if not items:
+            raise ItemNotFound
+        return items.first()
 
     @classmethod
     def get_next_id(cls) -> int:

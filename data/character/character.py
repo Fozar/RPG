@@ -7,9 +7,9 @@ from mongoengine import (
     EmbeddedDocumentField,
 )
 
-from .equipment import Equipment
+from .inventory.equipment import Equipment
 from .attributes import Attributes
-from .inventory import Inventory
+from .inventory.inventory import Inventory
 from ...config import config
 
 
@@ -96,6 +96,25 @@ class Character(Document):
             return True
         else:
             return False
+
+    @classmethod
+    def get_char_by_id(cls, member_id: str):
+        """Returns character object.
+
+        Args:
+            member_id: Member ID to get.
+
+        Returns:
+            Character: Character object.
+
+        Raises:
+            CharacterNotFound: If the member is not registered.
+
+        """
+        chars = cls.objects(member_id=member_id)
+        if not chars:
+            raise CharacterNotFound
+        return chars.first()
 
 
 class CharacterNotFound(Exception):
